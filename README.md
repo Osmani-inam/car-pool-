@@ -1,5 +1,4 @@
-# Carpool App — Nanded ↔ Hyderabad
-
+# Carpool 
 Spring Boot backend for a route-based carpooling app: car owners post rides,
 passengers pick a specific seat and request it, owners accept/reject, and
 live location is broadcast over WebSocket while a ride is ongoing.
