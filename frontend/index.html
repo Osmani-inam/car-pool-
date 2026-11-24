@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carpool — Nanded ↔ Hyderabad</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1220; --panel:#171b2e; --panel2:#1e2338; --border:#2a3150;
+    --text:#eef0fa; --muted:#9aa3c0; --accent:#6c8bff; --accent2:#38d6a8;
+    --danger:#ff6b6b; --warn:#ffb454; --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);}
+  header{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  header h1{font-size:18px;margin:0}
+  header h1 span{color:var(--accent)}
+  #authInfo{font-size:13px;color:var(--muted)}
+  #authInfo b{color:var(--text)}
+  #apiBaseWrap{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  #apiBase{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:4px 8px;font-size:12px;width:190px}
+  nav{display:flex;gap:6px;flex-wrap:wrap;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--panel)}
+  nav button{background:transparent;border:1px solid var(--border);color:var(--muted);padding:8px 14px;border-radius:999px;cursor:pointer;font-size:13px}
+  nav button.active{background:var(--accent);color:#0b0e1a;border-color:var(--accent);font-weight:600}
+  main{padding:22px 24px;max-width:960px;margin:0 auto}
+  section{display:none}
+  section.active{display:block}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:16px}
+  .card h2{margin-top:0;font-size:16px}
+  .card h3{font-size:14px;color:var(--muted);margin-bottom:10px}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input,select{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:9px 10px;border-radius:8px;font-size:14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row > div{flex:1;min-width:150px}
+  button.btn{margin-top:14px;background:var(--accent);color:#0b0e1a;border:none;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px}
+  button.btn.secondary{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+  button.btn.small{padding:6px 12px;font-size:12px;margin-top:0}
+  button.btn.danger{background:var(--danger);color:#1a0b0b}
+  .msg{margin-top:10px;font-size:13px;padding:8px 10px;border-radius:8px;display:none}
+  .msg.ok{display:block;background:rgba(56,214,168,.12);color:var(--accent2);border:1px solid rgba(56,214,168,.3)}
+  .msg.err{display:block;background:rgba(255,107,107,.12);color:var(--danger);border:1px solid rgba(255,107,107,.3)}
+  .ride-list{display:flex;flex-direction:column;gap:10px}
+  .ride{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  .ride .route{font-weight:600}
+  .ride .meta{font-size:12px;color:var(--muted)}
+  .pill{font-size:11px;padding:3px 9px;border-radius:999px;background:rgba(108,139,255,.15);color:var(--accent);border:1px solid rgba(108,139,255,.3)}
+  .pill.ongoing{background:rgba(255,180,84,.15);color:var(--warn);border-color:rgba(255,180,84,.3)}
+  .pill.completed{background:rgba(154,163,192,.15);color:var(--muted);border-color:var(--border)}
+  .pill.cancelled{background:rgba(255,107,107,.15);color:var(--danger);border-color:rgba(255,107,107,.3)}
+  .seat-map{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+  .seat{width:64px;height:56px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;cursor:pointer;border:1px solid var(--border);background:var(--panel2);color:var(--text)}
+  .seat.available:hover{border-color:var(--accent)}
+  .seat.selected{border-color:var(--accent2);background:rgba(56,214,168,.18);color:var(--accent2)}
+  .seat:disabled{cursor:not-allowed;opacity:.8}
+  .seat.held{background:rgba(255,180,84,.15);border-color:var(--warn);color:var(--warn);cursor:not-allowed}
+  .seat.booked{background:rgba(255,107,107,.15);border-color:var(--danger);color:var(--danger);cursor:not-allowed}
+  .seat .icon{font-size:16px}
+  .req{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+  .muted{color:var(--muted);font-size:13px}
+  code{background:var(--panel2);padding:1px 6px;border-radius:5px;font-size:12px}
+  #liveDot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px}
+  #liveDot.on{background:var(--accent2);box-shadow:0 0 6px var(--accent2)}
+  .widgetPreview{border:1px dashed var(--border);border-radius:10px;padding:14px;background:var(--panel2)}
+  .hero{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;background:linear-gradient(135deg, rgba(108,139,255,.18), rgba(56,214,168,.08));}
+  .hero h2{margin:0 0 8px;font-size:28px}
+  .hero p{margin:0;color:var(--muted)}
+  .heroActions{display:flex;gap:10px;flex-wrap:wrap}
+  .miniStat{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;border:1px solid var(--border);background:rgba(21,25,38,.8);font-size:12px;color:var(--muted)}
+  .miniStat strong{color:var(--text)}
+  .requestPopup{position:fixed;right:22px;bottom:22px;z-index:10;width:min(360px,calc(100vw - 44px));background:var(--panel);border:1px solid var(--accent2);border-radius:var(--radius);padding:16px;box-shadow:0 12px 32px rgba(0,0,0,.35);display:none}
+  .requestPopup.show{display:block}
+  .requestPopup h3{margin:0 0 8px;color:var(--accent2)}
+  .requestPopup p{margin:0;color:var(--muted);font-size:13px}
+  .requestPopupActions{display:flex;gap:8px;margin-top:12px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🚗 Carpool<span> · Nanded ↔ Hyderabad</span></h1>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div id="apiBaseWrap">API base:
+      <input id="apiBase" value="http://localhost:8080">
+    </div>
+    <div id="authInfo">Not logged in</div>
+  </div>
+</header>
+
+<nav id="tabs">
+  <button data-tab="portfolio" class="active">Home</button>
+  <button data-tab="auth">Login with OTP</button>
+  <button data-tab="car">My Car</button>
+  <button data-tab="postride">Post a Ride</button>
+  <button data-tab="browse">Browse / Search</button>
+  <button data-tab="myrides">My Rides &amp; Requests</button>
+  <button data-tab="live">Live Location</button>
+  <button data-tab="ratings">Ratings</button>
+</nav>
+
+<div id="requestPopup" class="requestPopup" role="status">
+  <h3>New seat request</h3>
+  <p id="requestPopupText"></p>
+  <div class="requestPopupActions">
+    <button class="btn small" onclick="respondToPopupRequest('accept')">Accept</button>
+    <button class="btn small danger" onclick="respondToPopupRequest('reject')">Reject</button>
+  </div>
+</div>
+
+<main>
+
+  <!-- AUTH -->
+  <section id="tab-auth">
+    <div class="card">
+      <h2>Create account</h2>
+      <div class="row">
+        <div><label>Name</label><input id="su_name" placeholder="Your name"></div>
+        <div><label>Phone</label><input id="su_phone" placeholder="9990001111"></div>
+      </div>
+      <button class="btn" onclick="signup()">Create account</button>
+      <div id="su_msg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Log in with phone + OTP</h2>
+      <div class="row">
+        <div><label>Phone</label><input id="li_phone" placeholder="9990001111"></div>
+        <div><label>OTP</label><input id="li_otp" placeholder="Enter 6-digit OTP"></div>
+      </div>
+      <div id="otpMeta" class="muted" style="margin-top:8px">OTP expires in 5 minutes.</div>
+      <div id="otpTimer" class="muted" style="margin-top:6px; font-weight:600; color: var(--accent2);">Resend available now</div>
+      <button id="sendOtpBtn" class="btn small" onclick="requestOtp()">Send OTP</button>
+      <button class="btn" onclick="login()">Verify &amp; Log in</button>
+      <button class="btn secondary" onclick="logout()">Log out</button>
+      <div id="li_msg" class="msg"></div>
+    </div>
+  </section>
+
+  <!-- CAR -->
+  <section id="tab-car">
+    <div id="carForm" class="card">
+      <h2>Add a car (as ride owner)</h2>
+      <div class="row">
+        <div><label>Model</label><input id="car_model" placeholder="Swift Dzire"></div>
+        <div><label>Number plate</label><input id="car_plate" placeholder="MH26AB1234"></div>
+        <div><label>Total seats (excl. driver)</label><input id="car_seats" type="number" value="4" min="1"></div>
+      </div>
+      <button class="btn" onclick="createCar()">Add car</button>
+      <div id="car_msg" class="msg"></div>
+    </div>
+    <div class="card">
+      <h3>My cars</h3>
+      <div id="carList" class="muted">Log in and this will load automatically.</div>
+      <button class="btn small secondary" onclick="loadCars()">Refresh</button>
+      <button id="addAnotherCarBtn" class="btn small" onclick="showCarForm()" hidden>Add another car</button>
+    </div>
+  </section>
+
+  <!-- POST RIDE -->
+  <section id="tab-postride">
+    <div class="card">
+      <h2>Post a ride</h2>
+      <div class="row">
+        <div><label>Car</label><select id="pr_car"><option value="">Log in and add a car first</option></select></div>
+        <div><label>Price per seat (₹)</label><input id="pr_price" type="number" value="600"></div>
+      </div>
+      <div class="row">
+        <div><label>Origin</label><input id="pr_origin" value="Nanded"></div>
+        <div><label>Destination</label><input id="pr_destination" value="Hyderabad"></div>
+      </div>
+      <label>Pickup point</label><input id="pr_pickup" placeholder="Nanded Bus Stand">
+      <div class="row">
+        <div><label>Date</label><input id="pr_date" type="date"></div>
+        <div><label>Time</label><input id="pr_time" type="time" lang="en-US" value="06:00"></div>
+        <div><label>End time</label><input id="pr_end_time" type="time" lang="en-US" value="12:00"></div>
+      </div>
+      <button class="btn" onclick="postRide()">Post ride</button>
+      <button class="btn small secondary" onclick="loadCarsIntoDropdown()">Refresh car list</button>
+      <div id="pr_msg" class="msg"></div>
+    </div>
+  </section>
+
+  <!-- BROWSE -->
+  <section id="tab-browse">
+    <div class="card">
+      <h2>Search rides</h2>
+      <div class="row">
+        <div><label>Origin</label><input id="s_origin" value="Nanded"></div>
+        <div><label>Destination</label><input id="s_destination" value="Hyderabad"></div>
+        <div><label>Date</label><input id="s_date" type="date"></div>
+      </div>
+      <button class="btn" onclick="searchRides()">Search</button>
+      <div id="s_msg" class="msg"></div>
+      <div id="searchResults" class="ride-list" style="margin-top:14px"></div>
+    </div>
+
+  </section>
+
+  <!-- BOOKING -->
+  <section id="tab-booking">
+    <div class="card">
+      <button class="btn small secondary" onclick="setActiveTab('browse')">← Back to rides</button>
+      <h2 style="margin-top:16px">Choose your seat</h2>
+      <div id="bookingRideSummary" class="muted">Select a ride to see available seats.</div>
+      <div id="seatMapWrap" class="seat-map" style="margin-top:16px"></div>
+      <p class="muted">Choose an available seat. Your request will be held for 10 minutes while the owner responds.</p>
+      <div id="selectedSeatInfo" class="muted">No seat selected.</div>
+      <button id="submitSeatRequestBtn" class="btn" onclick="submitSeatRequest()" disabled>Request selected seat</button>
+      <div id="booking_msg" class="msg"></div>
+    </div>
+  </section>
+
+  <!-- MY RIDES & REQUESTS -->
+  <section id="tab-myrides">
+    <div class="card">
+      <h2>Rides I own</h2>
+      <div id="myRidesList" class="ride-list"></div>
+      <button class="btn small secondary" onclick="loadMyRides()">Refresh</button>
+    </div>
+    <div class="card">
+      <h3>Incoming seat requests</h3>
+      <p class="muted">New passenger requests will appear here automatically and as a popup.</p>
+      <div id="incomingRequests" class="ride-list" style="margin-top:10px">Log in to monitor requests.</div>
+      <div id="req_msg" class="msg"></div>
+    </div>
+    <div class="card">
+      <h3>My seat requests</h3>
+      <p class="muted">Track pending, confirmed, rejected, and expired requests here.</p>
+      <div id="myBookings" class="ride-list" style="margin-top:10px">Log in to view your seat requests.</div>
+    </div>
+    <div class="card">
+      <h3>Mark a ride's status (owner only)</h3>
+      <div class="row">
+        <div><label>Ride ID</label><input id="st_rideId" placeholder="e.g. 1"></div>
+        <div><label>New status</label>
+          <select id="st_status">
+            <option value="UPCOMING">UPCOMING</option>
+            <option value="ONGOING">ONGOING</option>
+            <option value="COMPLETED">COMPLETED</option>
+            <option value="CANCELLED">CANCELLED</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn small" onclick="updateStatus()">Update status</button>
+      <div id="st_msg" class="msg"></div>
+    </div>
+  </section>
+
+  <!-- LIVE LOCATION -->
+  <section id="tab-live">
+    <div class="card">
+      <h2><span id="liveDot"></span>Live location</h2>
+      <div class="row">
+        <div><label>Ride ID</label><input id="live_rideId" placeholder="e.g. 1"></div>
+      </div>
+      <h3 style="margin-top:16px">Owner: share your location</h3>
+      <div class="row">
+        <div><label>Latitude</label><input id="live_lat" value="19.1383"></div>
+        <div><label>Longitude</label><input id="live_lng" value="77.3210"></div>
+      </div>
+      <button class="btn" onclick="connectAndShare()">Connect &amp; send location</button>
+      <button class="btn secondary" onclick="disconnectLive()">Disconnect</button>
+
+      <h3 style="margin-top:16px">Passenger: watch live location</h3>
+      <button class="btn" onclick="watchLocation()">Watch this ride</button>
+      <button class="btn small secondary" onclick="pollLocationOnce()">Poll once (REST fallback)</button>
+      <div id="live_msg" class="msg"></div>
+      <div id="live_output" class="muted" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- RATINGS -->
+  <section id="tab-ratings">
+    <div class="card">
+      <h2>Rate someone after a completed ride</h2>
+      <div class="row">
+        <div><label>Ride ID</label><input id="rt_rideId" placeholder="e.g. 1"></div>
+        <div><label>User ID being rated</label><input id="rt_userId" placeholder="e.g. 2"></div>
+        <div><label>Stars (1-5)</label><input id="rt_stars" type="number" min="1" max="5" value="5"></div>
+      </div>
+      <label>Comment</label><input id="rt_comment" placeholder="Great ride, on time!">
+      <button class="btn" onclick="submitRating()">Submit rating</button>
+      <div id="rt_msg" class="msg"></div>
+    </div>
+    <div class="card">
+      <h3>View a user's ratings</h3>
+      <div class="row">
+        <div><label>User ID</label><input id="rt_view_userId" placeholder="e.g. 1"></div>
+      </div>
+      <button class="btn small secondary" onclick="viewRatings()">Load ratings</button>
+      <div id="ratingsList" class="muted" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- PORTFOLIO WIDGET -->
+  <section id="tab-portfolio" class="active">
+    <div class="card hero">
+      <div>
+        <h2>Find your ride home</h2>
+        <p>Browse all available rides and upcoming trip options from Nanded to Hyderabad and back.</p>
+      </div>
+      <div class="heroActions">
+        <button class="btn small" onclick="setActiveTab('browse')">Search rides</button>
+        <button class="btn small secondary" onclick="loadPublicUpcoming()">Refresh</button>
+      </div>
+    </div>
+
+    <div id="publicUpcomingCard" class="card">
+      <h3>All available rides</h3>
+      <div id="publicUpcoming" class="widgetPreview">Loading available rides...</div>
+    </div>
+
+    <div id="upcomingRideCard" class="card">
+      <h3>Upcoming rides</h3>
+      <div id="upcomingRidePreview" class="widgetPreview">Loading upcoming rides...</div>
+    </div>
+
+    <div id="pf_msg" class="msg"></div>
+  </section>
+
+</main>
+
+<script>
+// ---------- state ----------
+let token = localStorage.getItem('carpool_token') || null;
+let userId = localStorage.getItem('carpool_userId') || null;
+let userName = localStorage.getItem('carpool_userName') || null;
+let stompClient = null;
+let currentSeatRideId = null;
+let selectedSeatId = null;
+let currentRideSeats = [];
+let returnToBookingAfterLogin = false;
+let requestPollingTimer = null;
+let knownPendingRequestIds = new Set();
+let popupRequest = null;
+const PUBLIC_RIDE_REFRESH_INTERVAL_MS = 60_000;
+
+function apiBase(){ return document.getElementById('apiBase').value.replace(/\/$/, ''); }
+
+// ---------- tabs ----------
+function setActiveTab(tabName){
+  document.querySelectorAll('#tabs button').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tabName || (tabName === 'booking' && b.dataset.tab === 'browse')));
+  document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === 'tab-' + tabName));
+}
+
+document.getElementById('tabs').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  setActiveTab(e.target.dataset.tab);
+  if (e.target.dataset.tab === 'myrides' && token) {
+    loadMyRides();
+    loadIncomingRequests(true);
+    loadMyBookings();
+  }
+});
+
+function renderAuthInfo(){
+  const el = document.getElementById('authInfo');
+  el.innerHTML = token ? `Logged in as <b>${userName}</b> (id ${userId})` : 'Not logged in';
+}
+renderAuthInfo();
+if (token) startRequestPolling();
+
+function showMsg(id, text, ok){
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + (ok ? 'ok' : 'err');
+}
+
+async function api(path, {method='GET', body=null, auth=true} = {}){
+  const headers = {'Content-Type': 'application/json'};
+  if (auth && token) headers['Authorization'] = 'Bearer ' + token;
+  let res;
+  try{
+    res = await fetch(apiBase() + path, {
+      method, headers, body: body ? JSON.stringify(body) : undefined
+    });
+  }catch(e){
+    throw new Error(`Cannot reach the API at ${apiBase()}. Check that the backend is running and the API base is correct; browser network/CORS errors can also cause this. (${e.message})`);
+  }
+  let data = null;
+  try { data = await res.json(); } catch(e) { /* no body */ }
+  if (!res.ok) {
+    const errMsg = (data && data.error) ? data.error : (res.status + ' ' + res.statusText);
+    throw new Error(errMsg);
+  }
+  return data;
+}
+
+// ---------- auth ----------
+let otpCountdownTimer = null;
+let otpResendLock = false;
+
+function setOtpMeta(text){
+  document.getElementById('otpMeta').textContent = text;
+}
+
+function setOtpTimerText(text){
+  const el = document.getElementById('otpTimer');
+  el.textContent = text;
+}
+
+function updateOtpButtonLabel(label){
+  document.getElementById('sendOtpBtn').textContent = label;
+}
+
+function startOtpCountdown(seconds){
+  const btn = document.getElementById('sendOtpBtn');
+  let remaining = seconds;
+  otpResendLock = true;
+  btn.disabled = true;
+  btn.style.opacity = '0.6';
+  updateOtpButtonLabel(`Resend in ${remaining}s`);
+  setOtpTimerText(`Resend in ${remaining}s`);
+
+  if (otpCountdownTimer) clearInterval(otpCountdownTimer);
+  otpCountdownTimer = setInterval(() => {
+    remaining -= 1;
+    if (remaining <= 0) {
+      clearInterval(otpCountdownTimer);
+      otpResendLock = false;
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      updateOtpButtonLabel('Send OTP');
+      setOtpTimerText('Resend available now');
+      setOtpMeta('OTP expired. Request a new code to continue.');
+      return;
+    }
+    updateOtpButtonLabel(`Resend in ${remaining}s`);
+    setOtpTimerText(`Resend in ${remaining}s`);
+  }, 1000);
+}
+
+function showOtpError(message){
+  alert(message);
+  setOtpMeta(message);
+}
+
+async function signup(){
+  try{
+    const body = {
+      name: document.getElementById('su_name').value,
+      phone: document.getElementById('su_phone').value
+    };
+    const data = await api('/api/auth/signup', {method:'POST', body, auth:false});
+    setSession(data);
+    showMsg('su_msg', 'Account created. Request an OTP and log in with your phone number.', true);
+  }catch(e){ showMsg('su_msg', e.message, false); }
+}
+
+async function requestOtp(){
+  try{
+    const phone = document.getElementById('li_phone').value;
+    const endpoint = otpResendLock ? '/api/auth/resend-otp' : '/api/auth/send-otp';
+    const res = await api(endpoint, {method:'POST', body:{phone}, auth:false});
+    setOtpMeta(`OTP expires in ${res.expiresInSeconds} seconds.`);
+    const resendSeconds = Math.max(0, Number(res.resendInSeconds || 30));
+    startOtpCountdown(resendSeconds);
+    showMsg('li_msg', res.message, true);
+  }catch(e){
+    showOtpError(e.message);
+    showMsg('li_msg', e.message, false);
+  }
+}
+
+async function login(){
+  try{
+    const body = {
+      phone: document.getElementById('li_phone').value,
+      otp: document.getElementById('li_otp').value
+    };
+    const data = await api('/api/auth/login', {method:'POST', body, auth:false});
+    setSession(data);
+    setOtpMeta('OTP verified successfully.');
+    setOtpTimerText('Verified');
+    showMsg('li_msg', 'Logged in with phone + OTP.', true);
+    if (returnToBookingAfterLogin && currentSeatRideId) {
+      returnToBookingAfterLogin = false;
+      const rideId = currentSeatRideId;
+      const seatId = selectedSeatId;
+      setActiveTab('booking');
+      await loadSeatMap(rideId);
+      if (seatId) selectSeat(seatId);
+    } else {
+      setActiveTab('portfolio');
+      loadPublicUpcoming();
+    }
+  }catch(e){
+    showOtpError(e.message);
+    showMsg('li_msg', e.message, false);
+  }
+}
+
+function setSession(data){
+  token = data.token; userId = data.userId; userName = data.name;
+  localStorage.setItem('carpool_token', token);
+  localStorage.setItem('carpool_userId', userId);
+  localStorage.setItem('carpool_userName', userName);
+  renderAuthInfo();
+  loadCarsIntoDropdown();
+  loadCars();
+  startRequestPolling();
+}
+
+function logout(){
+  token = null; userId = null; userName = null;
+  localStorage.removeItem('carpool_token');
+  localStorage.removeItem('carpool_userId');
+  localStorage.removeItem('carpool_userName');
+  renderAuthInfo();
+  stopRequestPolling();
+}
+
+function startRequestPolling(){
+  stopRequestPolling();
+  loadIncomingRequests(true);
+  loadMyBookings();
+  requestPollingTimer = setInterval(() => {
+    loadIncomingRequests(false);
+    loadMyBookings();
+  }, 3000);
+}
+
+function stopRequestPolling(){
+  if (requestPollingTimer) clearInterval(requestPollingTimer);
+  requestPollingTimer = null;
+  knownPendingRequestIds = new Set();
+  popupRequest = null;
+  document.getElementById('requestPopup').classList.remove('show');
+}
+
+async function loadIncomingRequests(initialLoad){
+  if (!token) return;
+  try{
+    const requests = await api('/api/requests/incoming');
+    const pending = requests.filter(r => r.status === 'PENDING');
+    const el = document.getElementById('incomingRequests');
+    el.innerHTML = pending.length ? pending.map(r => `
+      <div class="req"><span>Ride ${r.rideId} · ${r.seatLabel} · ${r.passengerName || 'Passenger'}</span>
+        <span><button class="btn small" onclick="respondToRequest(${r.id}, 'accept')">Accept</button>
+        <button class="btn small danger" onclick="respondToRequest(${r.id}, 'reject')">Reject</button></span></div>`).join('')
+      : '<p class="muted">No pending requests.</p>';
+
+    const newRequest = initialLoad
+      ? pending[0]
+      : pending.find(r => !knownPendingRequestIds.has(r.id));
+    if (newRequest && !popupRequest) showOwnerRequestPopup(newRequest);
+    knownPendingRequestIds = new Set(pending.map(r => r.id));
+  }catch(e){
+    document.getElementById('incomingRequests').textContent = e.message;
+    showMsg('req_msg', `Request monitor error: ${e.message}`, false);
+  }
+}
+
+function showOwnerRequestPopup(request){
+  popupRequest = request;
+  document.getElementById('requestPopupText').textContent =
+    `${request.passengerName || 'A passenger'} requested ${request.seatLabel} on ride ${request.rideId}.`;
+  document.getElementById('requestPopup').classList.add('show');
+}
+
+async function loadMyBookings(){
+  if (!token) return;
+  try{
+    const requests = await api('/api/requests/my');
+    const el = document.getElementById('myBookings');
+    el.innerHTML = requests.length ? requests.map(request => `
+      <div class="req">
+        <span>Ride ${request.rideId} · seat ${request.seatLabel}${request.status === 'ACCEPTED' ? ` · Owner: ${request.ownerName || 'Owner'}${request.ownerPhone ? ` · Phone: ${request.ownerPhone}` : ''}` : ''}</span>
+        <span class="pill ${request.status.toLowerCase()}">${request.status}</span>
+      </div>`).join('') : '<p class="muted">You have not requested a seat yet.</p>';
+  }catch(e){
+    document.getElementById('myBookings').textContent = `Could not load your seat requests: ${e.message}`;
+  }
+}
+
+function respondToPopupRequest(action){
+  if (!popupRequest) return;
+  respondToRequest(popupRequest.id, action);
+}
+
+async function respondToRequest(requestId, action){
+  try{
+    const data = await api(`/api/requests/${requestId}/${action}`, {method:'PATCH'});
+    if (popupRequest && popupRequest.id === requestId) {
+      popupRequest = null;
+      document.getElementById('requestPopup').classList.remove('show');
+    }
+    showMsg('req_msg', `Request ${data.status.toLowerCase()} for seat ${data.seatLabel}.`, true);
+    loadIncomingRequests(true);
+  }catch(e){ showMsg('req_msg', e.message, false); }
+}
+
+// ---------- cars ----------
+async function createCar(){
+  try{
+    const body = {
+      model: document.getElementById('car_model').value,
+      numberPlate: document.getElementById('car_plate').value,
+      totalSeats: parseInt(document.getElementById('car_seats').value, 10)
+    };
+    await api('/api/cars', {method:'POST', body});
+    showMsg('car_msg', 'Car saved. You can use it for future rides.', true);
+    await loadCars();
+    loadCarsIntoDropdown();
+  }catch(e){ showMsg('car_msg', e.message, false); }
+}
+
+async function loadCars(){
+  const el = document.getElementById('carList');
+  const form = document.getElementById('carForm');
+  const addAnotherButton = document.getElementById('addAnotherCarBtn');
+  if (!token) {
+    el.textContent = 'Log in first.';
+    form.hidden = false;
+    addAnotherButton.hidden = true;
+    return;
+  }
+  try{
+    const cars = await api('/api/cars/my');
+    el.innerHTML = cars.length ? cars.map(c =>
+      `<div class="ride"><div><div class="route">${c.model} — ${c.numberPlate}</div>
+       <div class="meta">${c.totalSeats} seats: ${c.seatLayout.join(', ')}</div></div>
+       <span class="pill">id ${c.id}</span></div>`).join('') : 'No cars yet.';
+    form.hidden = cars.length > 0;
+    addAnotherButton.hidden = cars.length === 0;
+  }catch(e){ el.textContent = e.message; }
+}
+
+function showCarForm(){
+  document.getElementById('carForm').hidden = false;
+  document.getElementById('addAnotherCarBtn').hidden = true;
+  document.getElementById('car_model').focus();
+}
+
+async function loadCarsIntoDropdown(){
+  const sel = document.getElementById('pr_car');
+  if (!token) {
+    sel.innerHTML = '<option value="">Log in and add a car first</option>';
+    return;
+  }
+  try{
+    const cars = await api('/api/cars/my');
+    sel.innerHTML = cars.length
+      ? '<option value="">Select a car</option>' + cars.map(c =>
+          `<option value="${c.id}">${c.model} (${c.numberPlate})</option>`).join('')
+      : '<option value="">Add a car in My Car first</option>';
+  }catch(e){
+    sel.innerHTML = '<option value="">Could not load cars</option>';
+    showMsg('pr_msg', `Could not load your cars: ${e.message}`, false);
+  }
+}
+
+// ---------- post ride ----------
+async function postRide(){
+  try{
+    const carId = Number(document.getElementById('pr_car').value);
+    if (!Number.isInteger(carId) || carId <= 0) {
+      throw new Error('Add a car in My Car, then select it here.');
+    }
+    const body = {
+      carId,
+      origin: document.getElementById('pr_origin').value,
+      destination: document.getElementById('pr_destination').value,
+      pickupPoint: document.getElementById('pr_pickup').value,
+      rideDate: isoDateToDmy(document.getElementById('pr_date').value),
+      rideTime: document.getElementById('pr_time').value + ':00',
+      endTime: document.getElementById('pr_end_time').value + ':00',
+      pricePerSeat: parseFloat(document.getElementById('pr_price').value)
+    };
+    const ride = await api('/api/rides', {method:'POST', body});
+    showMsg('pr_msg', `Ride posted (id ${ride.id}).`, true);
+    loadPublicUpcoming();
+  }catch(e){ showMsg('pr_msg', e.message, false); }
+}
+
+// ---------- browse / search ----------
+async function searchRides(){
+  try{
+    const origin = document.getElementById('s_origin').value;
+    const destination = document.getElementById('s_destination').value;
+    const date = isoDateToDmy(document.getElementById('s_date').value);
+    const rides = await api(`/api/rides/search?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&date=${date}`, {auth:false});
+    renderRideList('searchResults', rides, true);
+    showMsg('s_msg', `${rides.length} ride(s) found.`, true);
+  }catch(e){ showMsg('s_msg', e.message, false); }
+}
+
+function renderRideList(containerId, rides, clickable){
+  const el = document.getElementById(containerId);
+  if (!rides.length){ el.innerHTML = '<p class="muted">No rides found.</p>'; return; }
+  el.innerHTML = rides.map(r => `
+    <div class="ride" ${clickable ? `onclick="loadSeatMap(${r.id})" style="cursor:pointer"` : ''}>
+      <div>
+        <div class="route">${r.origin} → ${r.destination}</div>
+        <div class="meta">${r.rideDate} at ${formatTime12h(r.rideTime)} · ₹${r.pricePerSeat}/seat · ${r.ownerName} · ${r.carModel} · pickup: ${r.pickupPoint || '—'}</div>
+      </div>
+      <span class="pill ${r.status.toLowerCase()}">${r.status} · id ${r.id}</span>
+    </div>`).join('');
+}
+
+async function loadSeatMap(rideId){
+  currentSeatRideId = rideId;
+  selectedSeatId = null;
+  currentRideSeats = [];
+  setActiveTab('booking');
+  const wrap = document.getElementById('seatMapWrap');
+  const summary = document.getElementById('bookingRideSummary');
+  wrap.textContent = 'Loading available seats...';
+  summary.textContent = '';
+  document.getElementById('selectedSeatInfo').textContent = 'No seat selected.';
+  document.getElementById('submitSeatRequestBtn').disabled = true;
+  document.getElementById('booking_msg').className = 'msg';
+  try{
+    const ride = await api(`/api/rides/${rideId}`);
+    currentRideSeats = ride.seats;
+    summary.textContent = `${ride.origin} → ${ride.destination} · Ride ${ride.id} · ${ride.rideDate} at ${formatTime12h(ride.rideTime)} · ₹${ride.pricePerSeat} per seat`;
+    wrap.innerHTML = ride.seats.length ? ride.seats.map(seat => `
+      <button type="button" class="seat ${seat.status.toLowerCase()}" title="${seat.seatLabel} (${seat.status})"
+              aria-label="${seat.seatLabel}, ${seat.status.toLowerCase()}" data-seat-id="${seat.id}"
+              ${seat.status === 'AVAILABLE' ? `onclick="selectSeat(${seat.id})"` : 'disabled'}>
+        <span class="icon">${seat.status === 'AVAILABLE' ? '💺' : (seat.status === 'HELD' ? '⏳' : '🚫')}</span>
+        ${seat.seatLabel}
+      </button>`).join('') : '<p class="muted">No seats are configured for this ride.</p>';
+  }catch(e){
+    wrap.textContent = `Could not load ride seats: ${e.message}`;
+    showMsg('booking_msg', e.message, false);
+  }
+}
+
+function selectSeat(seatId){
+  const seat = currentRideSeats.find(item => item.id === seatId);
+  if (!seat || seat.status !== 'AVAILABLE') return;
+  selectedSeatId = seatId;
+  document.querySelectorAll('#seatMapWrap .seat').forEach(button => {
+    button.classList.toggle('selected', Number(button.dataset.seatId) === seatId);
+  });
+  document.getElementById('selectedSeatInfo').textContent = `Selected seat: ${seat.seatLabel}`;
+  document.getElementById('submitSeatRequestBtn').disabled = false;
+  document.getElementById('booking_msg').className = 'msg';
+}
+
+async function submitSeatRequest(){
+  if (!currentSeatRideId || !selectedSeatId) {
+    showMsg('booking_msg', 'Choose an available seat first.', false);
+    return;
+  }
+  if (!token) {
+    showMsg('booking_msg', 'Log in as a passenger to request this seat.', false);
+    returnToBookingAfterLogin = true;
+    setActiveTab('auth');
+    return;
+  }
+  try{
+    const request = await api(`/api/rides/${currentSeatRideId}/seats/${selectedSeatId}/request`, {method:'POST'});
+    selectedSeatId = null;
+    document.getElementById('selectedSeatInfo').textContent = 'No seat selected.';
+    document.getElementById('submitSeatRequestBtn').disabled = true;
+    showMsg('booking_msg', `Request submitted for seat ${request.seatLabel}. It is held while the owner reviews your request.`, true);
+    await loadSeatMap(currentSeatRideId);
+    showMsg('booking_msg', `Request submitted for seat ${request.seatLabel}. It is held while the owner reviews your request.`, true);
+    loadMyBookings();
+  }catch(e){
+    showMsg('booking_msg', e.message, false);
+  }
+}
+
+// ---------- my rides & requests ----------
+async function loadMyRides(){
+  const el = document.getElementById('myRidesList');
+  if (!token){ el.textContent = 'Log in first.'; return; }
+  try{
+    const rides = await api('/api/rides/my');
+    renderRideList('myRidesList', rides, true);
+  }catch(e){ el.textContent = e.message; }
+}
+
+async function respondRequest(action){
+  const id = document.getElementById('req_id').value;
+  try{
+    const data = await api(`/api/requests/${id}/${action}`, {method:'PATCH'});
+    showMsg('req_msg', `Request ${data.status.toLowerCase()} for seat ${data.seatLabel}.`, true);
+  }catch(e){ showMsg('req_msg', e.message, false); }
+}
+
+async function updateStatus(){
+  try{
+    const rideId = document.getElementById('st_rideId').value;
+    const status = document.getElementById('st_status').value;
+    const ride = await api(`/api/rides/${rideId}/status?status=${status}`, {method:'PATCH'});
+    showMsg('st_msg', `Ride ${ride.id} is now ${ride.status}.`, true);
+  }catch(e){ showMsg('st_msg', e.message, false); }
+}
+
+// ---------- live location ----------
+function connectAndShare(){
+  const rideId = document.getElementById('live_rideId').value;
+  if (!rideId){ showMsg('live_msg', 'Enter a ride id first.', false); return; }
+  const socket = new SockJS(apiBase() + '/ws');
+  stompClient = Stomp.over(socket);
+  stompClient.debug = null;
+  stompClient.connect({}, () => {
+    document.getElementById('liveDot').classList.add('on');
+    showMsg('live_msg', 'Connected. Sending location...', true);
+    const lat = parseFloat(document.getElementById('live_lat').value);
+    const lng = parseFloat(document.getElementById('live_lng').value);
+    stompClient.send(`/app/rides/${rideId}/location`, {}, JSON.stringify({lat, lng}));
+  }, (err) => {
+    showMsg('live_msg', 'WebSocket error: ' + err, false);
+  });
+}
+
+function disconnectLive(){
+  if (stompClient){ stompClient.disconnect(); stompClient = null; }
+  document.getElementById('liveDot').classList.remove('on');
+  showMsg('live_msg', 'Disconnected.', true);
+}
+
+function watchLocation(){
+  const rideId = document.getElementById('live_rideId').value;
+  if (!rideId){ showMsg('live_msg', 'Enter a ride id first.', false); return; }
+  const socket = new SockJS(apiBase() + '/ws');
+  const client = Stomp.over(socket);
+  client.debug = null;
+  client.connect({}, () => {
+    document.getElementById('liveDot').classList.add('on');
+    showMsg('live_msg', 'Watching for live updates...', true);
+    client.subscribe(`/topic/rides/${rideId}/location`, msg => {
+      const loc = JSON.parse(msg.body);
+      document.getElementById('live_output').textContent =
+        `Last update: lat ${loc.lat}, lng ${loc.lng} at ${loc.updatedAt}`;
+    });
+  }, (err) => showMsg('live_msg', 'WebSocket error: ' + err, false));
+}
+
+async function pollLocationOnce(){
+  try{
+    const rideId = document.getElementById('live_rideId').value;
+    const loc = await api(`/api/rides/${rideId}/location`);
+    document.getElementById('live_output').textContent =
+      `lat ${loc.lat}, lng ${loc.lng} at ${loc.updatedAt}`;
+  }catch(e){ showMsg('live_msg', e.message, false); }
+}
+
+// ---------- ratings ----------
+async function submitRating(){
+  try{
+    const body = {
+      rideId: parseInt(document.getElementById('rt_rideId').value, 10),
+      ratedUserId: parseInt(document.getElementById('rt_userId').value, 10),
+      stars: parseInt(document.getElementById('rt_stars').value, 10),
+      comment: document.getElementById('rt_comment').value
+    };
+    await api('/api/ratings', {method:'POST', body});
+    showMsg('rt_msg', 'Rating submitted.', true);
+  }catch(e){ showMsg('rt_msg', e.message, false); }
+}
+
+async function viewRatings(){
+  const el = document.getElementById('ratingsList');
+  try{
+    const id = document.getElementById('rt_view_userId').value;
+    const ratings = await api(`/api/users/${id}/ratings`, {auth:false});
+    el.innerHTML = ratings.length ? ratings.map(r =>
+      `<div class="req"><span>⭐ ${r.stars} — ${r.comment || 'no comment'}</span></div>`).join('')
+      : 'No ratings yet.';
+  }catch(e){ el.textContent = e.message; }
+}
+
+// ---------- portfolio widget ----------
+function isRideExpired(ride){
+  if (!ride.rideDate) return false;
+  const endTime = ride.endTime || ride.rideTime;
+  const [day, month, shortYear] = ride.rideDate.split('/').map(Number);
+  const [hours, minutes, seconds] = (endTime || '23:59:59').split(':').map(Number);
+  const expiry = new Date(2000 + shortYear, month - 1, day, hours, minutes, seconds || 0).getTime();
+  return Number.isFinite(expiry) && expiry <= Date.now();
+}
+
+function isoDateToDmy(isoDate){
+  if (!isoDate) return '';
+  const [year, month, day] = isoDate.split('-');
+  return `${day}/${month}/${year.slice(-2)}`;
+}
+
+function formatTime12h(time){
+  if (!time) return '—';
+  const [hour, minute] = time.split(':').map(Number);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return time;
+  }
+  const period = hour < 12 ? 'AM' : 'PM';
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${String(minute).padStart(2, '0')} ${period}`;
+}
+
+async function loadPublicUpcoming(){
+  const el = document.getElementById('publicUpcoming');
+  const preview = document.getElementById('upcomingRidePreview');
+  const allRidesCard = document.getElementById('publicUpcomingCard');
+  const upcomingCard = document.getElementById('upcomingRideCard');
+
+  try{
+    const response = await api('/api/rides/upcoming', {auth:false});
+    const rides = response.filter(ride =>
+      (!ride.status || ride.status === 'UPCOMING') && !isRideExpired(ride));
+
+    const allRideHtml = rides.length ? rides.map(r => `
+      <div class="ride">
+        <div>
+          <div class="route">${r.origin} → ${r.destination}</div>
+          <div class="meta">${r.rideDate} · ${formatTime12h(r.rideTime)}–${formatTime12h(r.endTime)} · ${r.ownerName ? `Owner: ${r.ownerName} · ` : ''}${r.carModel || 'Car details unavailable'} · ₹${r.pricePerSeat}/seat · ${r.seatsLeft} seat(s) left</div>
+        </div>
+        <button class="btn small" onclick="loadSeatMap(${r.id})">Choose a seat</button>
+      </div>`).join('') : '<p class="muted">No rides available right now.</p>';
+
+    const nextRides = rides.slice(0, 5);
+    const upcomingHtml = nextRides.length ? nextRides.map(r => `
+      <div class="ride">
+        <div>
+          <div class="route">${r.origin} → ${r.destination}</div>
+          <div class="meta">${r.rideDate} · ${formatTime12h(r.rideTime)}–${formatTime12h(r.endTime)} · ${r.ownerName ? `Owner: ${r.ownerName} · ` : ''}${r.carModel || 'Car details unavailable'} · from ₹${r.pricePerSeat}</div>
+        </div>
+        <span class="pill">${r.seatsLeft} left</span>
+      </div>`).join('') : '<p class="muted">No upcoming rides scheduled.</p>';
+
+    el.innerHTML = allRideHtml;
+    preview.innerHTML = upcomingHtml;
+    allRidesCard.hidden = rides.length === 0;
+    upcomingCard.hidden = rides.length === 0;
+    showMsg('pf_msg', rides.length
+      ? `${rides.length} ride(s) available for booking.`
+      : 'No rides available right now.', true);
+  }catch(e){
+    el.replaceChildren();
+    preview.replaceChildren();
+    allRidesCard.hidden = true;
+    upcomingCard.hidden = true;
+    showMsg('pf_msg', e.message, false);
+  }
+}
+
+// default date fields to today
+const now = new Date();
+const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+document.getElementById('pr_date').value = todayStr;
+document.getElementById('s_date').value = todayStr;
+
+setActiveTab('portfolio');
+loadPublicUpcoming();
+setInterval(loadPublicUpcoming, PUBLIC_RIDE_REFRESH_INTERVAL_MS);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) loadPublicUpcoming();
+});
+</script>
+</body>
+</html>
